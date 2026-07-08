@@ -1,0 +1,38 @@
+name: build-fullstack
+on:
+  push:
+    branches: ["main"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scaffold Next.js (App Router + API routes)
+        run: npx --yes create-next-app@latest web --ts --app --eslint --use-npm --no-tailwind --no-src-dir --import-alias "@/*" --yes
+      - name: Install Aider
+        run: python -m pip install --upgrade pip && pip install aider-chat
+      - name: Implement the app (free model)
+        working-directory: web
+        env:
+          GROQ_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: aider --yes --model groq/llama-3.3-70b-versatile --message-file ../PROMPT.md app/page.tsx app/api/items/route.ts
+      - name: Deploy to Vercel (production)
+        working-directory: web
+        run: |
+          npm i -g vercel
+          vercel deploy --prod --yes --token "${{ secrets.VERCEL_TOKEN }}" | tail -1 > ../deploy-url.txt || echo "deploy failed" > ../deploy-url.txt
+      - name: Commit source + deploy URL
+        run: |
+          git config user.name "competitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "build: full-stack app from prompt [skip ci]" || echo "nothing to commit"
+          git push
